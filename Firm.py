@@ -17,13 +17,13 @@ class Firm(Agent):
         self.revenue = 0  # Revenu exogène (chiffre d'affaires)
 
         # Structure de la dette de l'entreprise
-        self.debt = 500000
+        self.debt = 1500000
         # L'entreprise est endettée (Leurvier), ce qui la rend sensible aux taux
 
     def step(self):
         # 1. Génération de Revenu (Simplifié: proportionnel à la taille)
         # Chaque employé génère un peu plus que son salaire (marge)
-        productivity_per_worker = self.wage * 1.5
+        productivity_per_worker = self.wage * 1.20
         self.revenue = len(self.employees) * productivity_per_worker
 
         # 2. Calcul des Coûts
@@ -71,6 +71,25 @@ class Firm(Agent):
             # print(f"Entreprise {self.unique_id}: {nb_to_fire} licenciements pour sauver {deficit:.0f} de marge.")
 
     def hire_staff(self):
-        # Logique simplifiée : on prend un chômeur au hasard dans le modèle
-        # (Nécessiterait une "bourse de l'emploi" dans le modèle global)
-        pass
+        """
+        Logique d'embauche : Trouve un chômeur et l'embauche.
+        """
+        # 1. Scanner le marché pour trouver des chômeurs
+        # (Dans une version optimisée, on aurait une liste 'labor_market' dans le modèle)
+        potential_hires = [
+            agent for agent in self.model.schedule.agents
+            if getattr(agent, "employer", -1) is None and agent.unique_id != self.unique_id
+        ]
+
+        # Note technique : getattr(agent, "employer", -1) est une sécurité
+        # pour éviter de planter si on tombe sur la Banque ou la BC qui n'ont pas d'attribut 'employer'.
+
+        if potential_hires:
+            # 2. Choisir un chômeur au hasard (Matching aléatoire)
+            new_employee = self.model.random.choice(potential_hires)
+
+            # 3. Signer le contrat
+            new_employee.get_job(self)  # On appelle la méthode du ménage
+            self.employees.append(new_employee)
+
+            # print(f"Entreprise {self.unique_id} a embauché {new_employee.unique_id}.")

@@ -6,6 +6,7 @@ import numpy as np
 from Household import Household
 from Bank import Bank
 from CentralBank import CentralBank
+from Firm import Firm
 
 # Import des classes précédentes (supposées dans le même fichier ou importées)
 # from agents import Household, Bank, CentralBank
@@ -42,19 +43,49 @@ class HousingMarketModel(Model):
 
         # 3. Création des Ménages
         for i in range(self.num_agents):
-            # Revenu log-normal (pour créer des riches et des pauvres)
-            income = np.random.lognormal(mean=9, sigma=0.5)  # ~8000 +/- variabilité
-            wealth = np.random.uniform(10000, 50000)  # Apport initial
+            # Au début, tout le monde est chômeur ou on les assigne aléatoirement
+            # Pour faire simple : Chômeur avec une épargne initiale
+            wealth = np.random.uniform(10000, 50000)
 
-            a = Household(i, self, income, wealth, savings_rate=0.2)
+            # Note: Income mis à 0 initialement, l'entreprise les embauchera au tour 1
+            a = Household(i, self, income=0, initial_wealth=wealth, savings_rate=0.2)
             self.schedule.add(a)
+
+        self.firms = []
+        for i in range(5):  # 5 Grosses Entreprises
+            unique_id = 500 + i
+            # On donne un ID et un salaire moyen de 2000
+            f = Firm(unique_id, self, wage=2000)
+            self.schedule.add(f)
+            self.firms.append(f)
+
+        all_households = [a for a in self.schedule.agents if isinstance(a, Household)]
+
+        # On mélange les agents pour ne pas prendre que les premiers
+        self.random.shuffle(all_households)
+
+        # On définit combien de gens travaillent au jour 0 (ex: 850 sur 1000)
+        num_workers = int(self.num_agents * 0.85)
+
+        for i in range(num_workers):
+            worker = all_households[i]
+            # On choisit une entreprise au hasard
+            employer = self.random.choice(self.firms)
+
+            # On effectue l'embauche manuelle (Force hiring)
+            worker.get_job(employer)
+            employer.employees.append(worker)
 
         # 4. Collecteur de Données (Module 5 intégré)
         self.datacollector = DataCollector(
             model_reporters={
                 "Price": "house_price",
                 "Interest Rate": "interest_rate",
-                "Transactions": lambda m: m.bank.loans_granted
+                # Calcul du Taux de Chômage en temps réel
+                "Unemployment": lambda m: sum(
+                    [1 for a in m.schedule.agents if isinstance(a, Household) and a.employer is None]) / m.num_agents,
+                # Volume de crédit (Indicateur de gel du marché)
+                "Credit Volume": lambda m: m.bank.loans_granted
             }
         )
 
@@ -80,39 +111,50 @@ class HousingMarketModel(Model):
 
     def update_market_price(self):
         """
-        Loi de l'Offre et la Demande.
+        Loi de l'Offre et la Demande (Version Crash Systémique).
         """
         demand_count = 0
 
-        # On compte la demande solvable
+        # 1. CALCUL DE LA DEMANDE (D)
         for agent in self.schedule.agents:
-            if isinstance(agent, Household) and not agent.is_owner:
-                # L'agent calcule son budget max (Module 1)
-                budget = agent.calculate_purchasing_power()
+            # On ne s'intéresse qu'aux Ménages Locataires qui veulent acheter
+            # (Note: On utilise le nom de la classe en string pour éviter les erreurs d'import si nécessaire)
+            if type(agent).__name__ == 'Household' and not agent.is_owner:
 
-                # Si Budget >= Prix Actuel, c'est une demande valide
-                if budget >= self.house_price:
-                    # Simulation de la transaction :
-                    # La banque valide-t-elle vraiment ? (Module 2)
-                    # Pour simplifier le market clearing, on suppose ici que
-                    # Budget 'suffisant' implique pré-approbation.
+                # L'agent décide de sa stratégie (Mentir ou pas ?)
+                declared_income, is_fraudster = agent.decide_application_strategy(self.house_price)
+
+                # Il soumet son dossier à la Banque
+                loan_approved = self.bank.evaluate_loan_application(
+                    agent,
+                    self.house_price,
+                    declared_income
+                )
+
+                # Si la Banque dit OUI, c'est une demande effective
+                if loan_approved:
                     demand_count += 1
 
-        # Calcul de l'excès de demande (Gap)
+        # 2. RÉCUPÉRATION DE L'OFFRE (S)
+        # C'est ici que le Krach se joue : 'housing_supply' augmente à chaque saisie de la Banque !
+        supply = self.housing_supply
+
+        # Sécurité anti-crash numérique (division par zéro)
+        if supply <= 0: supply = 1
+
+        # 3. CALCUL DU GAP (Pression sur les prix)
         # Formule : (D - S) / S
-        # Si D=12 et S=10 -> +20% de pression -> Prix monte
-        if self.housing_supply > 0:
-            excess_demand = (demand_count - self.housing_supply) / self.housing_supply
-        else:
-            excess_demand = 0
+        # Exemple Krach : Demande=5 (ruinés), Offre=500 (saisies) -> (5 - 500)/500 = -0.99
+        excess_demand = (demand_count - supply) / supply
 
-        # Mise à jour du prix
-        # On limite la variation pour éviter des explosions numériques (Smoothing)
-        price_change = self.house_price * self.alpha * excess_demand
-        self.house_price += price_change
+        # 4. MISE À JOUR DU PRIX
+        # On applique le facteur d'ajustement (alpha)
+        # Si excess_demand est très négatif (ex: -0.99), le prix va chuter violemment.
+        self.house_price = self.house_price * (1 + self.alpha * excess_demand)
 
-        # Empêcher les prix négatifs
+        # Plancher à 0 (Le prix ne peut pas être négatif)
         if self.house_price < 0:
             self.house_price = 0
 
-        # print(f"Step {self.schedule.steps}: Prix={self.house_price:.0f}, Demande={demand_count}, Taux={self.interest_rate:.3f}")
+        # Debug print optionnel pour voir le massacre en direct dans la console
+        # print(f"T={self.schedule.steps} | Prix={self.house_price:.0f} | D={demand_count} vs S={supply} | Gap={excess_demand:.2f}")

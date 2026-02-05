@@ -1,50 +1,50 @@
 import matplotlib.pyplot as plt
 from HousingMarketModel import HousingMarketModel
 
-
 def run_simulation():
-    # 1. Initialisation du modèle
-    # On prend 1000 ménages pour avoir une loi des grands nombres décente
-    print("Initialisation de la simulation...")
+    # 1. Configuration
+    # On garde 1000 agents pour avoir des stats fiables sur le chômage
+    print("--- Démarrage de la simulation MagnumOpus ---")
     model = HousingMarketModel(N_households=1000, N_banks=1, initial_price=100000)
 
-    # 2. Exécution de la boucle temporelle (100 mois)
-    # Le choc de la Banque Centrale est prévu au step 50
-    print("Exécution en cours", end="")
+    # 2. Exécution (100 mois)
+    print("Simulation en cours [", end="")
     for i in range(100):
         model.step()
-        if i % 10 == 0: print(".", end="")  # Barre de chargement simple
-    print(" Terminé.")
+        if i % 10 == 0: print("#", end="")
+    print("] Terminé.")
 
-    # 3. Extraction des données
+    # 3. Récupération des données
     results = model.datacollector.get_model_vars_dataframe()
 
-    # 4. Visualisation (Dashboard de Risque)
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    # 4. Visualisation Avancée (3 étages)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
 
-    # Graphique 1 : L'évolution du Prix Immobilier
-    ax1.plot(results["Price"], color='#1f77b4', linewidth=2, label='Prix Immobilier Moyen')
-    ax1.set_title("Dynamique du Marché Immobilier")
-    ax1.set_ylabel("Prix (Dirhams)")
-    ax1.grid(True, linestyle='--', alpha=0.7)
-    ax1.legend()
+    # --- Graphique 1 : La Politique Monétaire (Le Déclencheur) ---
+    ax1.plot(results["Interest Rate"], color='red', linewidth=2, linestyle='--')
+    ax1.set_title("1. Le Choc : Taux Directeur", fontsize=12, fontweight='bold')
+    ax1.set_ylabel("Taux")
+    ax1.grid(True, alpha=0.3)
+    # Marquer le moment du choc
+    ax1.axvline(x=50, color='black', alpha=0.5)
 
-    # Graphique 2 : Le Taux d'Intérêt (Le déclencheur)
-    ax2.plot(results["Interest Rate"], color='#d62728', linewidth=2, linestyle='--', label="Taux d'intérêt (Crédit)")
-    ax2.set_title("Politique Monétaire & Taux Commerciaux")
-    ax2.set_ylabel("Taux")
-    ax2.set_xlabel("Temps (Mois)")
-    ax2.grid(True, linestyle='--', alpha=0.7)
-    ax2.legend()
+    # --- Graphique 2 : L'Économie Réelle (La Transmission) ---
+    ax2.plot(results["Unemployment"] * 100, color='orange', linewidth=2) # En pourcentage
+    ax2.set_title("2. La Transmission : Taux de Chômage", fontsize=12, fontweight='bold')
+    ax2.set_ylabel("Chômeurs (%)")
+    ax2.grid(True, alpha=0.3)
+    ax2.axvline(x=50, color='black', alpha=0.5)
 
-    # Marquage visuel du Choc
-    ax1.axvline(x=50, color='black', alpha=0.3)
-    ax2.axvline(x=50, color='black', alpha=0.3)
-    ax1.text(52, results["Price"].max(), "Choc de Taux", fontsize=10, color='black')
+    # --- Graphique 3 : Le Marché Immobilier (L'Impact) ---
+    ax3.plot(results["Price"], color='blue', linewidth=2)
+    ax3.set_title("3. La Conséquence : Prix Immobilier", fontsize=12, fontweight='bold')
+    ax3.set_ylabel("Prix (Dirhams)")
+    ax3.set_xlabel("Temps (Mois)")
+    ax3.grid(True, alpha=0.3)
+    ax3.axvline(x=50, color='black', alpha=0.5)
 
     plt.tight_layout()
     plt.show()
-
 
 if __name__ == "__main__":
     run_simulation()

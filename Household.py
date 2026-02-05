@@ -20,7 +20,10 @@ class Household(Agent):
         self.savings_rate = savings_rate
         self.is_owner = False  # Statut : Locataire par défaut
         self.property_value = 0  # 0 si locataire
-
+        self.perceived_audit_prob = 0.05  # Croyance : "La banque ne vérifie que 5% des dossiers"
+        self.utility_house = 100          # Gain émotionnel d'être proprio
+        self.penalty_caught = 500         # Coût social/financier si attrapé
+        self.employer = None
     def step(self):
         """
         Action à chaque pas de temps (supposé être 1 mois).
@@ -85,6 +88,80 @@ class Household(Agent):
 
         return final_budget
 
-def lose_job(self):
-    self.income = 0  # Choc brutal de revenu
-    # Optionnel : self.income = self.model.unemployment_benefit
+
+    def get_job(self, firm):
+        self.employer = firm
+        self.income = firm.wage
+
+
+    def lose_job(self):
+        self.employer = None
+        self.income = 0
+
+    def decide_application_strategy(self, property_price):
+        """
+        GAME THEORY : Le Jeu du Menteur.
+        Retourne : (Revenu_Déclaré, Est_Fraudeur)
+        """
+        # 1. Récupérer les conditions du marché (Hypothèse : l'agent connait les taux)
+        interest_rate = self.model.interest_rate
+        duration_years = self.model.loan_duration
+        bank_max_dti = self.model.bank_max_dti  # Il connait la règle du jeu (33%)
+
+        # 2. Calculer le besoin financier (Simulation interne)
+        # Supposons qu'il utilise toute son épargne en apport
+        loan_needed = property_price - self.wealth
+
+        if loan_needed <= 0:
+            return self.income, False  # Pas besoin de crédit, pas de fraude
+
+        # Calcul de la mensualité théorique (Méthode statique ou dupliquée pour l'autonomie)
+        monthly_payment = self._calculate_pmt_internal(loan_needed, interest_rate, duration_years)
+
+        # 3. Calcul du Revenu Requis pour passer le DTI
+        # Si PMT / Revenu <= 0.33  <=>  Revenu >= PMT / 0.33
+        required_income = monthly_payment / bank_max_dti
+
+        # 4. Arbre de Décision
+        if self.income >= required_income:
+            # Cas Honnête : Mon vrai revenu suffit
+            return self.income, False
+        else:
+            # Cas Critique : Mon vrai revenu ne suffit pas.
+            # DOIS-JE MENTIR ?
+
+            # Calcul de l'Espérance d'Utilité (EU)
+            # EU_Honest = 0 (Je n'ai pas la maison, statu quo)
+            # EU_Fraud = (1 - p)*U_House - p*Penalty
+
+            p = self.perceived_audit_prob
+            eu_fraud = (1 - p) * self.utility_house - p * self.penalty_caught
+
+            if eu_fraud > 0:
+                # La tentation est trop forte -> FRAUDE
+                # On déclare juste ce qu'il faut pour passer (+1 pour être sûr)
+                # print(f"Agent {self.unique_id} FRAUDE ! Vrai={self.income:.0f}, Déclaré={required_income:.0f}")
+                return required_income + 1, True
+            else:
+                # La peur du gendarme est trop forte -> ABANDON
+                return self.income, False
+
+    def _calculate_pmt_internal(self, principal, rate, years):
+        """Calcul financier identique à celui de la banque."""
+        r_monthly = rate / 12
+        n_months = years * 12
+        if r_monthly == 0: return principal / n_months
+        return principal * (r_monthly / (1 - (1 + r_monthly) ** (-n_months)))
+
+    def can_pay_mortgage(self, monthly_payment):
+        """
+        Version Crise de Liquidité :
+        Si le revenu ne couvre pas la traite, c'est le défaut immédiat.
+        On suppose que l'épargne est illiquide ou réservée à la survie alimentaire.
+        """
+        # Si je gagne moins que ce que je dois payer...
+        if self.income < monthly_payment:
+            # ... C'est terminé. Je ne brûle pas mon épargne pour une cause perdue.
+            return False
+
+        return True
