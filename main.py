@@ -46,16 +46,24 @@ SCENARIOS = {
     },
     "3": {
         "name": "Stagflation (Choc d'Offre)",
-        "description": "Taux hauts dès le début, économie qui peine à démarrer.",
+        "description": "Inflation + Récession lente. Les entreprises saignent du cash doucement.",
         "params": {
             "N_households": 1000,
-            "shock_step": 20,
+            "shock_step": 20,       # Choc tôt
             "base_rate": 0.06,
-            "shock_rate": 0.09,
-            "firm_debt": 800000,
-            "firm_margin": 1.30,
-            "audit_prob": 0.20,
-            "init_supply": 200  # Pénurie de logements initiale
+            "shock_rate": 0.09,     # Taux très hauts
+
+            # --- CALIBRATION "SAIGNEMENT LENT" ---
+            "firm_debt": 7500000,   # 7.5 Millions (Intérêts > Profit opérationnel)
+            "firm_margin": 1.06,    # Marge très fine (6%)
+            # -------------------------------------
+
+            "audit_prob": 0.05,
+            "init_supply": 500,
+            "enable_inequality": False,
+            "mean_income": 4000,
+            "gini_index": 0.35,
+            "min_wage": 2500
         }
     },
     "4": {
@@ -63,19 +71,19 @@ SCENARIOS = {
         "description": "Distribution Log-Normale des revenus (Gini ~0.40).",
         "params": {
             "N_households": 1000,
-            "shock_step": 50,
+            "shock_step": 20,
             "base_rate": 0.04,
             "shock_rate": 0.07,
-            "firm_debt": 1500000,
-            "firm_margin": 1.20,
+            "firm_debt": 7500000,
+            "firm_margin": 1.06,
             "audit_prob": 0.10,
             "init_supply": 500,
 
             # --- NOUVEAUX PARAMÈTRES DATA ---
             "enable_inequality": True,  # Activer la distribution complexe
-            "mean_income": 5000,  # Salaire moyen cible
-            "gini_index": 0.20,  # Inégalités (0=Communisme, 1=1 personne a tout)
-            "min_wage": 3000  # SMIG (Plancher)
+            "mean_income": 3000,  # Salaire moyen cible
+            "gini_index": 0.7,  # Inégalités (0=Communisme, 1=1 personne a tout)
+            "min_wage": 2000  # SMIG (Plancher)
         }
     },
     # ... (Garde tes anciens scénarios, ajoute "enable_inequality": False pour eux)

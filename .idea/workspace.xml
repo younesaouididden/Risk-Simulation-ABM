@@ -6,10 +6,10 @@
   <component name="ChangeListManager">
     <list default="true" id="c913c1a8-7f6c-427d-a6ad-c27b4cb2c0a8" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Firm.py" beforeDir="false" afterPath="$PROJECT_DIR$/Firm.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Household.py" beforeDir="false" afterPath="$PROJECT_DIR$/Household.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/HousingMarketModel.py" beforeDir="false" afterPath="$PROJECT_DIR$/HousingMarketModel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Third_simulation(2008Crisis).png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/first_simulation.png" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/second_simulation(SolidEconomy).png" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
