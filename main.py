@@ -6,30 +6,42 @@ from HousingMarketModel import HousingMarketModel
 SCENARIOS = {
     "1": {
         "name": "L'Âge d'Or (Croissance Saine)",
-        "description": "Entreprises solides, dettes faibles, taux stables.",
+        "description": "Taux bas, entreprises saines, plein emploi.",
         "params": {
             "N_households": 1000,
-            "shock_step": 999,  # Pas de choc avant la fin
-            "base_rate": 0.03,  # Taux bas
-            "shock_rate": 0.03,  # Pas de hausse
-            "firm_debt": 200000,  # Dette très faible (Sain)
-            "firm_margin": 1.50,  # Marge énorme (50%)
-            "audit_prob": 0.50,  # Banque très stricte (50% d'audit)
-            "init_supply": 500
+            "shock_step": 150, # Pas de choc avant la fin
+            "base_rate": 0.03,
+            "shock_rate": 0.03,
+            "firm_debt": 0,       # Entreprises sans dette
+            "firm_margin": 1.20,  # Marge confortable (20%)
+            "audit_prob": 0.02,
+            "init_supply": 500,
+            "enable_inequality": False,
+            "mean_income": 4000,
+            "gini_index": 0.35,
+            "min_wage": 2500
         }
     },
     "2": {
         "name": "Le Krach Systémique (Type 2008)",
-        "description": "Dette massive, marges faibles, choc de taux brutal, fraude endémique.",
+        "description": "Scénario calibré : Dette de 10M qui devient toxique à 7%.",
         "params": {
             "N_households": 1000,
-            "shock_step": 50,  # Le choc arrive au milieu
+            "shock_step": 50,
             "base_rate": 0.04,
-            "shock_rate": 0.07,  # +300 points de base
-            "firm_debt": 1500000,  # Dette toxique
-            "firm_margin": 1.20,  # Marge faible (20%)
-            "audit_prob": 0.05,  # Banque aveugle (5% d'audit) -> Fraude massive
-            "init_supply": 500
+            "shock_rate": 0.07,
+
+            # --- LE JUSTE MILIEU ---
+            "firm_debt": 10000000,  # 10 Millions (Survivable à 4%, Mortel à 7%)
+            "firm_margin": 1.05,    # Marge faible (5%)
+            # -----------------------
+
+            "audit_prob": 0.05,
+            "init_supply": 500,
+            "enable_inequality": False,
+            "mean_income": 4000,
+            "gini_index": 0.35,
+            "min_wage": 2500
         }
     },
     "3": {

@@ -6,7 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="c913c1a8-7f6c-427d-a6ad-c27b4cb2c0a8" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Bank.py" beforeDir="false" afterPath="$PROJECT_DIR$/Bank.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Firm.py" beforeDir="false" afterPath="$PROJECT_DIR$/Firm.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Household.py" beforeDir="false" afterPath="$PROJECT_DIR$/Household.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/HousingMarketModel.py" beforeDir="false" afterPath="$PROJECT_DIR$/HousingMarketModel.py" afterDir="false" />
@@ -51,6 +50,7 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "Python.Bank.executor": "Run",
+    "Python.Household.executor": "Run",
     "Python.HousingMarketModel.executor": "Run",
     "Python.main.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
