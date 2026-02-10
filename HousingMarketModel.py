@@ -1,160 +1,193 @@
 from mesa import Model
 from mesa.time import RandomActivation
 from mesa.datacollection import DataCollector
-import numpy as np
-# Import des modules locaux (puisque tu as créé des fichiers séparés)
 from Household import Household
 from Bank import Bank
-from CentralBank import CentralBank
 from Firm import Firm
+import numpy as np
+from scipy.special import erfinv
 
-# Import des classes précédentes (supposées dans le même fichier ou importées)
-# from agents import Household, Bank, CentralBank
 
 class HousingMarketModel(Model):
-    """
-    Le Modèle Global (L'Environnement).
-    Gère le prix du marché, l'offre et la boucle de rétroaction.
-    """
-
-    def __init__(self, N_households, N_banks, initial_price=100000):
+    def __init__(self, config):
         super().__init__()
-        self.num_agents = N_households
+        self.config = config
+        self.num_agents = config["N_households"]
         self.schedule = RandomActivation(self)
 
-        # Paramètres Macro
-        self.house_price = initial_price
-        self.housing_supply = int(N_households * 0.4)  # Offre fixe: 40% des agents peuvent loger
-        self.alpha = 0.05  # Sensibilité du prix (5% d'ajustement max par excès unitaire)
-
-        # Variables dynamiques pour les agents
-        self.interest_rate = 0.02  # Initialisé par la BC plus tard
+        # --- PARAMÈTRES MACRO ---
+        self.house_price = 100000
+        self.interest_rate = config["base_rate"]
         self.bank_max_dti = 0.33
-        self.bank_min_down_payment = 0.20
         self.loan_duration = 20
+        self.alpha = 0.10  # On réduit un peu la volatilité
+        self.housing_supply = config["init_supply"]
+        self.deals_this_step = 0
 
-        # 1. Création de la Banque Centrale
-        self.central_bank = CentralBank(999, self)
-        self.schedule.add(self.central_bank)
+        # --- REVENUS : DISTRIBUTION NORMALE (HÉTÉROGÈNE) ---
+        is_sandbox = config.get("enable_inequality", False)
+        if is_sandbox:
+            incomes = self.generate_lognormal_income(
+                n=self.num_agents,
+                mean_income=config["mean_income"],
+                gini=config["gini_index"],
+                min_wage=config["min_wage"]
+            )
+        else:
+            # On garde la distribution Normale qui marchait bien pour la diversité
+            # Moyenne 4000, mais avec des riches et des pauvres
+            incomes = np.random.normal(loc=4000, scale=800, size=self.num_agents)
+            incomes = np.maximum(incomes, 2500)  # SMIG
 
-        # 2. Création de la Banque Commerciale (Unique pour simplifier)
-        self.bank = Bank(888, self)
+        # Agents
+        self.bank = Bank(9999, self)
+        self.bank.audit_probability = config["audit_prob"]
         self.schedule.add(self.bank)
 
-        # 3. Création des Ménages
-        for i in range(self.num_agents):
-            # Au début, tout le monde est chômeur ou on les assigne aléatoirement
-            # Pour faire simple : Chômeur avec une épargne initiale
-            wealth = np.random.uniform(10000, 50000)
-
-            # Note: Income mis à 0 initialement, l'entreprise les embauchera au tour 1
-            a = Household(i, self, income=0, initial_wealth=wealth, savings_rate=0.2)
-            self.schedule.add(a)
-
         self.firms = []
-        for i in range(5):  # 5 Grosses Entreprises
+        for i in range(5):
             unique_id = 500 + i
-            # On donne un ID et un salaire moyen de 2000
-            f = Firm(unique_id, self, wage=2000)
+            f = Firm(unique_id, self, wage=0,
+                     debt=config["firm_debt"],
+                     margin=config["firm_margin"])
             self.schedule.add(f)
             self.firms.append(f)
 
+        for i in range(self.num_agents):
+            market_value = incomes[i]
+            # Richesse liée au salaire (plus réaliste)
+            wealth = market_value * np.random.uniform(5, 15)
+
+            a = Household(i, self,
+                          market_value=market_value,
+                          initial_wealth=wealth,
+                          savings_rate=0.2)
+            self.schedule.add(a)
+
+        # Marché du Travail
         all_households = [a for a in self.schedule.agents if isinstance(a, Household)]
-
-        # On mélange les agents pour ne pas prendre que les premiers
         self.random.shuffle(all_households)
-
-        # On définit combien de gens travaillent au jour 0 (ex: 850 sur 1000)
-        num_workers = int(self.num_agents * 0.85)
-
+        num_workers = int(self.num_agents * 0.90)
         for i in range(num_workers):
             worker = all_households[i]
-            # On choisit une entreprise au hasard
             employer = self.random.choice(self.firms)
-
-            # On effectue l'embauche manuelle (Force hiring)
             worker.get_job(employer)
             employer.employees.append(worker)
 
-        # 4. Collecteur de Données (Module 5 intégré)
+        # DataCollector
         self.datacollector = DataCollector(
             model_reporters={
                 "Price": "house_price",
                 "Interest Rate": "interest_rate",
-                # Calcul du Taux de Chômage en temps réel
-                "Unemployment": lambda m: sum(
-                    [1 for a in m.schedule.agents if isinstance(a, Household) and a.employer is None]) / m.num_agents,
-                # Volume de crédit (Indicateur de gel du marché)
-                "Credit Volume": lambda m: m.bank.loans_granted
+                "Unemployment": lambda m: sum([1 for a in m.schedule.agents if
+                                               type(a).__name__ == 'Household' and a.employer is None]) / m.num_agents,
+                "Housing Supply": "housing_supply",
+                "Deals Count": "deals_this_step",
+                "Foreclosures": lambda m: m.bank.foreclosures_count,
+                "Mean Wealth": lambda m: np.mean(
+                    [a.wealth for a in m.schedule.agents if type(a).__name__ == 'Household']),
+                "Wealth Gini": self.compute_gini
             }
         )
 
     def step(self):
-        """
-        Une étape de simulation (1 mois).
-        """
-        # Reset des compteurs de la banque pour ce tour
-        self.bank.loans_granted = 0
+        previous_deals = self.deals_this_step
+        self.deals_this_step = 0
 
-        # 1. Tous les agents agissent (Revenu, Décision, Politique Monétaire)
+        if self.schedule.steps == self.config["shock_step"]:
+            self.interest_rate = self.config["shock_rate"]
+            print(f"!!! CHOC : {self.config['base_rate']} -> {self.config['shock_rate']} !!!")
+
+        # 1. TURNOVER (Classique)
+        households = [a for a in self.schedule.agents if type(a).__name__ == 'Household']
+        unemployed = [a for a in households if a.employer is None]
+        unemployment_rate = len(unemployed) / len(households)
+
+        # Plus de ventes si l'économie va bien (confiance), moins si crise (peur)
+        turnover_prob = 0.015 if unemployment_rate < 0.10 else 0.005
+
+        for agent in households:
+            if agent.is_owner and self.random.random() < turnover_prob:
+                agent.is_owner = False
+                agent.mortgage_payment = 0
+                self.housing_supply += 1
+
+                # 2. CONSTRUCTION
+        # Les constructeurs ne construisent que si le prix monte ou se maintient
+        # et s'il y a un minimum de ventes.
+        target_supply = int(self.num_agents * 0.10)
+        market_is_active = (previous_deals > 0)
+
+        if self.housing_supply < target_supply and market_is_active:
+            new_houses = 5  # Production prudente et constante
+            self.housing_supply += new_houses
+
         self.schedule.step()
-
-        # 2. Mise à jour du taux du modèle depuis la Banque (Transmission)
-        # La BC change le taux de la bank -> Le modèle le lit pour les calculs des ménages
-        self.interest_rate = self.bank.interest_rate
-
-        # 3. Mécanisme de Marché (Clearing)
         self.update_market_price()
-
-        # 4. Enregistrement des données
         self.datacollector.collect(self)
 
     def update_market_price(self):
-        """
-        Loi de l'Offre et la Demande (Version Crash Systémique).
-        """
-        demand_count = 0
+        potential_buyers = []
 
-        # 1. CALCUL DE LA DEMANDE (D)
+        # --- C'EST ICI QUE TOUT SE JOUE : LE FILTRE RATIONNEL ---
         for agent in self.schedule.agents:
-            # On ne s'intéresse qu'aux Ménages Locataires qui veulent acheter
-            # (Note: On utilise le nom de la classe en string pour éviter les erreurs d'import si nécessaire)
             if type(agent).__name__ == 'Household' and not agent.is_owner:
 
-                # L'agent décide de sa stratégie (Mentir ou pas ?)
-                declared_income, is_fraudster = agent.decide_application_strategy(self.house_price)
+                # 1. Check Banque (Capacité)
+                declared, fraud = agent.decide_application_strategy(self.house_price)
+                bank_says_yes = self.bank.evaluate_loan_application(agent, self.house_price, declared)
 
-                # Il soumet son dossier à la Banque
-                loan_approved = self.bank.evaluate_loan_application(
-                    agent,
-                    self.house_price,
-                    declared_income
-                )
+                # 2. Check Rationalité (Volonté)
+                # Un ménage n'achète pas si le prix dépasse 6 années de son revenu (Ratio PTI)
+                # C'est la limite "Bulle"
+                if agent.income > 0:
+                    max_rational_price = agent.income * 12 * 6
+                else:
+                    max_rational_price = 0
 
-                # Si la Banque dit OUI, c'est une demande effective
-                if loan_approved:
-                    demand_count += 1
+                buyer_is_rational = (self.house_price <= max_rational_price)
 
-        # 2. RÉCUPÉRATION DE L'OFFRE (S)
-        # C'est ici que le Krach se joue : 'housing_supply' augmente à chaque saisie de la Banque !
+                if bank_says_yes and buyer_is_rational:
+                    potential_buyers.append(agent)
+
+        # Calcul Pression
+        demand = len(potential_buyers)
         supply = self.housing_supply
 
-        # Sécurité anti-crash numérique (division par zéro)
-        if supply <= 0: supply = 1
+        # Formule Z-Score pondérée
+        excess_demand = (demand - supply) / self.num_agents
 
-        # 3. CALCUL DU GAP (Pression sur les prix)
-        # Formule : (D - S) / S
-        # Exemple Krach : Demande=5 (ruinés), Offre=500 (saisies) -> (5 - 500)/500 = -0.99
-        excess_demand = (demand_count - supply) / supply
+        # Asymétrie Panique
+        if excess_demand > 0:
+            adjustment = 0.10 * excess_demand  # Hausse douce
+        else:
+            adjustment = 0.40 * excess_demand  # Baisse violente (Krach)
 
-        # 4. MISE À JOUR DU PRIX
-        # On applique le facteur d'ajustement (alpha)
-        # Si excess_demand est très négatif (ex: -0.99), le prix va chuter violemment.
-        self.house_price = self.house_price * (1 + self.alpha * excess_demand)
+        self.house_price = self.house_price * (1 + adjustment)
+        if self.house_price < 0: self.house_price = 0
 
-        # Plancher à 0 (Le prix ne peut pas être négatif)
-        if self.house_price < 0:
-            self.house_price = 0
+        # Transactions
+        self.random.shuffle(potential_buyers)
+        while self.housing_supply > 0 and len(potential_buyers) > 0:
+            buyer = potential_buyers.pop()
+            buyer.is_owner = True
+            self.housing_supply -= 1
+            loan = self.house_price * (1 - self.bank.min_down_payment)
+            buyer.mortgage_payment = self.bank.calculate_pmt(loan)
+            self.deals_this_step += 1
 
-        # Debug print optionnel pour voir le massacre en direct dans la console
-        # print(f"T={self.schedule.steps} | Prix={self.house_price:.0f} | D={demand_count} vs S={supply} | Gap={excess_demand:.2f}")
+    @staticmethod
+    def generate_lognormal_income(n, mean_income, gini, min_wage):
+        if gini < 1e-9: gini = 1e-9
+        sigma = 2 * erfinv(gini)
+        mu = np.log(mean_income) - (sigma ** 2) / 2
+        inc = np.random.lognormal(mean=mu, sigma=sigma, size=n)
+        return np.maximum(inc, min_wage)
+
+    @staticmethod
+    def compute_gini(model):
+        wealths = sorted([a.wealth for a in model.schedule.agents if type(a).__name__ == 'Household'])
+        if not wealths or sum(wealths) == 0: return 0
+        n = len(wealths)
+        idx = np.arange(1, n + 1)
+        return ((2 * idx - n - 1) * wealths).sum() / (n * sum(wealths))

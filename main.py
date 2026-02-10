@@ -1,50 +1,162 @@
 import matplotlib.pyplot as plt
+import numpy as np
 from HousingMarketModel import HousingMarketModel
 
-def run_simulation():
-    # 1. Configuration
-    # On garde 1000 agents pour avoir des stats fiables sur le chômage
-    print("--- Démarrage de la simulation MagnumOpus ---")
-    model = HousingMarketModel(N_households=1000, N_banks=1, initial_price=100000)
+# --- GESTIONNAIRE DE SCÉNARIOS ---
+SCENARIOS = {
+    "1": {
+        "name": "L'Âge d'Or (Croissance Saine)",
+        "description": "Entreprises solides, dettes faibles, taux stables.",
+        "params": {
+            "N_households": 1000,
+            "shock_step": 999,  # Pas de choc avant la fin
+            "base_rate": 0.03,  # Taux bas
+            "shock_rate": 0.03,  # Pas de hausse
+            "firm_debt": 200000,  # Dette très faible (Sain)
+            "firm_margin": 1.50,  # Marge énorme (50%)
+            "audit_prob": 0.50,  # Banque très stricte (50% d'audit)
+            "init_supply": 500
+        }
+    },
+    "2": {
+        "name": "Le Krach Systémique (Type 2008)",
+        "description": "Dette massive, marges faibles, choc de taux brutal, fraude endémique.",
+        "params": {
+            "N_households": 1000,
+            "shock_step": 50,  # Le choc arrive au milieu
+            "base_rate": 0.04,
+            "shock_rate": 0.07,  # +300 points de base
+            "firm_debt": 1500000,  # Dette toxique
+            "firm_margin": 1.20,  # Marge faible (20%)
+            "audit_prob": 0.05,  # Banque aveugle (5% d'audit) -> Fraude massive
+            "init_supply": 500
+        }
+    },
+    "3": {
+        "name": "Stagflation (Choc d'Offre)",
+        "description": "Taux hauts dès le début, économie qui peine à démarrer.",
+        "params": {
+            "N_households": 1000,
+            "shock_step": 20,
+            "base_rate": 0.06,
+            "shock_rate": 0.09,
+            "firm_debt": 800000,
+            "firm_margin": 1.30,
+            "audit_prob": 0.20,
+            "init_supply": 200  # Pénurie de logements initiale
+        }
+    },
+    "4": {
+        "name": "Bac à Sable (Population Réaliste Maroc)",
+        "description": "Distribution Log-Normale des revenus (Gini ~0.40).",
+        "params": {
+            "N_households": 1000,
+            "shock_step": 50,
+            "base_rate": 0.04,
+            "shock_rate": 0.07,
+            "firm_debt": 1500000,
+            "firm_margin": 1.20,
+            "audit_prob": 0.10,
+            "init_supply": 500,
 
-    # 2. Exécution (100 mois)
+            # --- NOUVEAUX PARAMÈTRES DATA ---
+            "enable_inequality": True,  # Activer la distribution complexe
+            "mean_income": 5000,  # Salaire moyen cible
+            "gini_index": 0.20,  # Inégalités (0=Communisme, 1=1 personne a tout)
+            "min_wage": 3000  # SMIG (Plancher)
+        }
+    },
+    # ... (Garde tes anciens scénarios, ajoute "enable_inequality": False pour eux)
+}
+
+
+
+def run_simulation(scenario_id):
+    config = SCENARIOS[scenario_id]["params"]
+    print(f"\n--- Démarrage : {SCENARIOS[scenario_id]['name']} ---")
+    print(f"Paramètres : {config}")
+
+    # Initialisation avec le Dictionnaire de Config
+    model = HousingMarketModel(config)
+
+    # Exécution
     print("Simulation en cours [", end="")
     for i in range(100):
         model.step()
-        if i % 10 == 0: print("#", end="")
+        if i % 10 == 0: print("=", end="")
     print("] Terminé.")
 
-    # 3. Récupération des données
+    # Extraction
     results = model.datacollector.get_model_vars_dataframe()
 
-    # 4. Visualisation Avancée (3 étages)
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
+    # --- DASHBOARD ULTIME (6 Graphiques) ---
+    fig, axes = plt.subplots(3, 2, figsize=(14, 12), sharex=True)
+    plt.subplots_adjust(hspace=0.3)
 
-    # --- Graphique 1 : La Politique Monétaire (Le Déclencheur) ---
-    ax1.plot(results["Interest Rate"], color='red', linewidth=2, linestyle='--')
-    ax1.set_title("1. Le Choc : Taux Directeur", fontsize=12, fontweight='bold')
-    ax1.set_ylabel("Taux")
-    ax1.grid(True, alpha=0.3)
-    # Marquer le moment du choc
-    ax1.axvline(x=50, color='black', alpha=0.5)
+    # 1. Macro: Taux
+    ax = axes[0, 0]
+    ax.plot(results["Interest Rate"], color='red', linestyle='--', label='Taux Directeur')
+    ax.set_title("Politique Monétaire")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
-    # --- Graphique 2 : L'Économie Réelle (La Transmission) ---
-    ax2.plot(results["Unemployment"] * 100, color='orange', linewidth=2) # En pourcentage
-    ax2.set_title("2. La Transmission : Taux de Chômage", fontsize=12, fontweight='bold')
-    ax2.set_ylabel("Chômeurs (%)")
-    ax2.grid(True, alpha=0.3)
-    ax2.axvline(x=50, color='black', alpha=0.5)
+    # 2. Macro: Chômage
+    ax = axes[0, 1]
+    ax.plot(results["Unemployment"] * 100, color='orange', linewidth=2, label='Taux Chômage')
+    ax.set_title("Économie Réelle (Chômage %)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
-    # --- Graphique 3 : Le Marché Immobilier (L'Impact) ---
-    ax3.plot(results["Price"], color='blue', linewidth=2)
-    ax3.set_title("3. La Conséquence : Prix Immobilier", fontsize=12, fontweight='bold')
-    ax3.set_ylabel("Prix (Dirhams)")
-    ax3.set_xlabel("Temps (Mois)")
-    ax3.grid(True, alpha=0.3)
-    ax3.axvline(x=50, color='black', alpha=0.5)
+    # 3. Immo: Prix
+    ax = axes[1, 0]
+    ax.plot(results["Price"], color='blue', linewidth=2, label='Prix Moyen')
+    ax.set_title("Indice des Prix Immobiliers")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
-    plt.tight_layout()
+    # 4. Immo: Offre vs Demande (Comprendre le Prix)
+    ax = axes[1, 1]
+    ax.plot(results["Housing Supply"], color='green', label='Offre (Stock)')
+    ax.plot(results["Deals Count"], color='purple', alpha=0.5, label='Ventes Réalisées')
+    ax.set_title("Dynamique de Marché (Volume)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # 5. Finance: Prêts Toxiques (Risk Monitor)
+    ax = axes[2, 0]
+    ax.plot(results["Foreclosures"], color='black', label='Saisies (Cumul)')
+    ax.set_title("Défauts de Paiement & Saisies")
+    ax.fill_between(results.index, results["Foreclosures"], color='black', alpha=0.1)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # 6. Social: Richesse Moyenne
+    ax = axes[2, 1]
+    ax.plot(results["Mean Wealth"], color='gold', linewidth=2, label='Patrimoine Moyen')
+    ax.set_title("Richesse des Ménages (Cash)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Marquage du Choc
+    shock_t = config["shock_step"]
+    if shock_t < 100:
+        for ax_row in axes:
+            for ax in ax_row:
+                ax.axvline(x=shock_t, color='red', alpha=0.3, linestyle=':')
+
+    plt.suptitle(f"Rapport de Simulation : {SCENARIOS[scenario_id]['name']}", fontsize=16)
     plt.show()
 
+
 if __name__ == "__main__":
-    run_simulation()
+    print("CHOISISSEZ VOTRE SCÉNARIO :")
+    print("1. L'Âge d'Or (Croissance infinie)")
+    print("2. Le Krach 2008 (Votre chef d'oeuvre)")
+    print("3. Stagflation (Difficile)")
+
+    choice = input("Entrez le numéro (1-3) : ")
+    if choice in SCENARIOS:
+        run_simulation(choice)
+    else:
+        print("Choix invalide. Lancement du scénario 2 par défaut.")
+        run_simulation("2")
